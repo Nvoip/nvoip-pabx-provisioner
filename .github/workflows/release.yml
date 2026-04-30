@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install RPM tooling
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Build packages
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" sh scripts/package.sh
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm

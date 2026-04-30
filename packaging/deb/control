@@ -1,0 +1,10 @@
+Package: nvoip-pabx-provisioner
+Version: 0.1.0
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: Nvoip <suporte@nvoip.com.br>
+Homepage: https://www.nvoip.com.br/
+Description: Provisionador de trunk SIP Nvoip para PABX Linux
+ CLI para provisionar trunk SIP Nvoip em Asterisk, FreePBX, Issabel,
+ FreeSWITCH e FusionPBX, com modo interativo e validacao.

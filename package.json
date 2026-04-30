@@ -1,0 +1,35 @@
+{
+  "name": "@nvoip/pabx-provisioner",
+  "version": "0.1.0",
+  "description": "CLI para provisionar trunk SIP Nvoip em Asterisk, FreePBX, Issabel, FreeSWITCH e FusionPBX.",
+  "license": "GPL-3.0-only",
+  "homepage": "https://www.nvoip.com.br/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nvoip/nvoip-pabx-provisioner.git"
+  },
+  "bin": {
+    "nvoip-pabx-provisioner": "bin/nvoip-pabx-provisioner"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "scripts/install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "nvoip",
+    "asterisk",
+    "freeswitch",
+    "fusionpbx",
+    "freepbx",
+    "issabel",
+    "sip",
+    "pabx",
+    "voip"
+  ],
+  "scripts": {
+    "test": "sh tests/syntax.sh"
+  }
+}

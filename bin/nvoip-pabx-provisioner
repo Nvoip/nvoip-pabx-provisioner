@@ -1,0 +1,247 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+. "$ROOT_DIR/lib/common.sh"
+. "$ROOT_DIR/lib/detect.sh"
+. "$ROOT_DIR/lib/render.sh"
+. "$ROOT_DIR/lib/validate.sh"
+
+usage() {
+  cat <<EOF
+Uso:
+  nvoip-pabx-provisioner detect
+  nvoip-pabx-provisioner configure [opcoes]
+  nvoip-pabx-provisioner provision --trunk-user USER --trunk-password PASS [opcoes]
+  nvoip-pabx-provisioner validate [opcoes]
+
+Opcoes de provisionamento:
+  --engine auto|asterisk|freepbx|issabel|freeswitch|fusionpbx
+  --trunk-user USER
+  --trunk-password PASS
+  --trunk-name NAME                 padrao: ${NVOIP_TRUNK_NAME_DEFAULT}
+  --sip-host HOST                   padrao: ${NVOIP_SIP_HOST_DEFAULT}
+  --from-domain DOMAIN              padrao: valor de --sip-host
+  --external-ip IP                  IP publico para PABX atras de NAT
+  --no-auto-external-ip             nao tenta descobrir IP publico automaticamente
+  --apply-test-routing              cria rotas minimas de entrada/saida para teste
+  --inbound-did DID                 padrao: _X.
+  --outbound-prefix PREFIX          padrao: 0
+  --dry-run                         mostra arquivos gerados sem escrever
+  --apply                           escreve configs e recarrega servicos
+  --backup-dir DIR                  padrao: /var/backups/nvoip-pabx
+  --validate                        valida registro apos aplicar
+  --validate-sipp                   roda smoke test SIP OPTIONS com sipp, se instalado
+
+Variaveis equivalentes:
+  NVOIP_TRUNK_USER, NVOIP_TRUNK_PASSWORD, NVOIP_TRUNK_NAME, NVOIP_SIP_HOST, NVOIP_EXTERNAL_IP
+EOF
+}
+
+command_name="${1:-}"
+[ -n "$command_name" ] || { usage; exit 1; }
+shift || true
+
+engine="auto"
+trunk_user="${NVOIP_TRUNK_USER:-}"
+trunk_password="${NVOIP_TRUNK_PASSWORD:-}"
+trunk_name="${NVOIP_TRUNK_NAME:-$NVOIP_TRUNK_NAME_DEFAULT}"
+sip_host="${NVOIP_SIP_HOST:-$NVOIP_SIP_HOST_DEFAULT}"
+from_domain=""
+external_ip="${NVOIP_EXTERNAL_IP:-}"
+auto_external_ip="1"
+inbound_context="$NVOIP_ASTERISK_CONTEXT_DEFAULT"
+test_context="$NVOIP_TEST_CONTEXT_DEFAULT"
+inbound_did="_X."
+outbound_prefix="0"
+apply_test_routing="0"
+dry_run="1"
+backup_dir="/var/backups/nvoip-pabx"
+do_validate="0"
+do_validate_sipp="0"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --engine) engine="${2:-}"; shift 2 ;;
+    --trunk-user) trunk_user="${2:-}"; shift 2 ;;
+    --trunk-password) trunk_password="${2:-}"; shift 2 ;;
+    --trunk-name) trunk_name="${2:-}"; shift 2 ;;
+    --sip-host) sip_host="${2:-}"; shift 2 ;;
+    --from-domain) from_domain="${2:-}"; shift 2 ;;
+    --external-ip) external_ip="${2:-}"; shift 2 ;;
+    --no-auto-external-ip) auto_external_ip="0"; shift ;;
+    --inbound-did) inbound_did="${2:-}"; shift 2 ;;
+    --outbound-prefix) outbound_prefix="${2:-}"; shift 2 ;;
+    --apply-test-routing) apply_test_routing="1"; shift ;;
+    --dry-run) dry_run="1"; shift ;;
+    --apply) dry_run="0"; shift ;;
+    --backup-dir) backup_dir="${2:-}"; shift 2 ;;
+    --validate) do_validate="1"; shift ;;
+    --validate-sipp) do_validate_sipp="1"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) nvoip_die "opcao desconhecida: $1" ;;
+  esac
+done
+
+[ -n "$from_domain" ] || from_domain="$sip_host"
+
+case "$command_name" in
+  detect)
+    nvoip_print_detection
+    exit 0
+    ;;
+  configure|provision|validate)
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
+
+if [ "$command_name" = "configure" ]; then
+  nvoip_is_tty || nvoip_die "configure precisa de terminal interativo; use provision com flags para automacao"
+
+  nvoip_log "Assistente de provisionamento Nvoip PABX"
+  nvoip_log ""
+
+  detected_engine="$engine"
+  if [ "$detected_engine" = "auto" ]; then
+    detected_engine="$(nvoip_detect_engine)"
+    [ "$detected_engine" = "unknown" ] && detected_engine="asterisk"
+  fi
+
+  engine="$(nvoip_prompt "PABX detectado/engine (asterisk, freepbx, issabel, freeswitch, fusionpbx)" "$detected_engine")"
+  trunk_user="$(nvoip_prompt "Usuario do trunk Nvoip" "$trunk_user")"
+  if [ -z "$trunk_password" ]; then
+    trunk_password="$(nvoip_prompt_secret "Senha do trunk Nvoip")"
+  fi
+  trunk_name="$(nvoip_prompt "Nome interno do trunk" "$trunk_name")"
+  sip_host="$(nvoip_prompt "Servidor SIP Nvoip" "$sip_host")"
+
+  if [ "$engine" = "asterisk" ] && [ -z "$external_ip" ]; then
+    external_ip="$(nvoip_prompt "IP publico do PABX se estiver atras de NAT (vazio para pular)" "")"
+  fi
+
+  if nvoip_prompt_yes_no "Criar rotas minimas de teste de entrada/saida?" "n"; then
+    apply_test_routing="1"
+  else
+    apply_test_routing="0"
+  fi
+
+  if nvoip_prompt_yes_no "Aplicar agora? Responda nao para apenas simular" "n"; then
+    dry_run="0"
+    if nvoip_prompt_yes_no "Validar registro depois de aplicar?" "s"; then
+      do_validate="1"
+    fi
+    if nvoip_prompt_yes_no "Rodar smoke test SIP com sipp/sip-tester se disponivel?" "n"; then
+      do_validate_sipp="1"
+    fi
+  else
+    dry_run="1"
+  fi
+
+  command_name="provision"
+fi
+
+if [ "$engine" = "auto" ]; then
+  engine="$(nvoip_detect_engine)"
+fi
+
+[ "$engine" != "unknown" ] || nvoip_die "nao foi possivel detectar PABX; informe --engine"
+[ -n "$trunk_user" ] || nvoip_die "informe --trunk-user ou NVOIP_TRUNK_USER"
+[ -n "$trunk_password" ] || nvoip_die "informe --trunk-password ou NVOIP_TRUNK_PASSWORD"
+
+if [ "$engine" = "asterisk" ] && [ -z "$external_ip" ] && [ "$auto_external_ip" = "1" ]; then
+  external_ip="$(nvoip_detect_public_ip || true)"
+  [ -n "$external_ip" ] && nvoip_log "IP publico detectado automaticamente: $external_ip"
+fi
+
+if [ "$command_name" = "validate" ]; then
+  case "$engine" in
+    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" ;;
+    freeswitch|fusionpbx) nvoip_validate_freeswitch_registration "$trunk_name" ;;
+    *) nvoip_die "engine nao suportado para validacao: $engine" ;;
+  esac
+  [ "$do_validate_sipp" = "1" ] && nvoip_validate_sipp_options "$sip_host" "$trunk_user"
+  exit 0
+fi
+
+work_dir="${TMPDIR:-/tmp}/nvoip-pabx.$$"
+mkdir -p "$work_dir"
+trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+
+begin="; BEGIN NVOIP MANAGED BLOCK ${trunk_name}"
+end="; END NVOIP MANAGED BLOCK ${trunk_name}"
+
+case "$engine" in
+  asterisk|freepbx|issabel)
+    pjsip_file="$work_dir/pjsip.conf"
+    ext_file="$work_dir/extensions.conf"
+    include_transport="0"
+    [ "$engine" = "asterisk" ] && include_transport="1"
+    nvoip_render_asterisk_pjsip "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" "$include_transport" "$external_ip" > "$pjsip_file"
+    nvoip_render_asterisk_extensions "$trunk_name" "$inbound_context" "$test_context" "$outbound_prefix" "$inbound_did" "$apply_test_routing" > "$ext_file"
+
+    if [ "$engine" = "asterisk" ]; then
+      pjsip_target="/etc/asterisk/pjsip.conf"
+      ext_target="/etc/asterisk/extensions.conf"
+    else
+      pjsip_target="/etc/asterisk/pjsip_custom_post.conf"
+      ext_target="/etc/asterisk/extensions_custom.conf"
+    fi
+
+    nvoip_show_or_apply_block "Asterisk PJSIP trunk" "$pjsip_target" "$pjsip_file" "$dry_run" "$begin" "$end" "$backup_dir"
+    nvoip_show_or_apply_block "Asterisk dialplan" "$ext_target" "$ext_file" "$dry_run" "$begin" "$end" "$backup_dir"
+
+    if [ "$dry_run" = "0" ]; then
+      if [ "$engine" = "asterisk" ] && [ "$include_transport" = "1" ]; then
+        nvoip_restart_asterisk || nvoip_warn "nao foi possivel reiniciar o Asterisk automaticamente"
+      else
+        nvoip_reload_asterisk || nvoip_warn "nao foi possivel recarregar o Asterisk automaticamente"
+      fi
+    fi
+    ;;
+  freeswitch|fusionpbx)
+    gateway_file="$work_dir/gateway.xml"
+    dialplan_file="$work_dir/dialplan.xml"
+    nvoip_render_freeswitch_gateway "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" > "$gateway_file"
+    nvoip_render_freeswitch_dialplan "$trunk_name" "$outbound_prefix" "$inbound_did" "$apply_test_routing" > "$dialplan_file"
+
+    gateway_target="/etc/freeswitch/sip_profiles/external/${trunk_name}.xml"
+    dialplan_target="/etc/freeswitch/dialplan/default/${trunk_name}.xml"
+
+    if [ "$dry_run" = "1" ]; then
+      nvoip_log "### FreeSWITCH gateway"
+      nvoip_log "# target: $gateway_target"
+      cat "$gateway_file"
+      nvoip_log ""
+      nvoip_log "### FreeSWITCH dialplan"
+      nvoip_log "# target: $dialplan_target"
+      cat "$dialplan_file"
+      nvoip_log ""
+    else
+      nvoip_make_backup "$gateway_target" "$backup_dir"
+      nvoip_make_backup "$dialplan_target" "$backup_dir"
+      mkdir -p "$(dirname "$gateway_target")" "$(dirname "$dialplan_target")"
+      cp "$gateway_file" "$gateway_target"
+      cp "$dialplan_file" "$dialplan_target"
+      nvoip_reload_freeswitch || nvoip_warn "nao foi possivel recarregar o FreeSWITCH automaticamente"
+    fi
+    ;;
+  *)
+    nvoip_die "engine nao suportado: $engine"
+    ;;
+esac
+
+if [ "$do_validate" = "1" ]; then
+  case "$engine" in
+    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" ;;
+    freeswitch|fusionpbx) nvoip_validate_freeswitch_registration "$trunk_name" ;;
+  esac
+fi
+
+if [ "$do_validate_sipp" = "1" ]; then
+  nvoip_validate_sipp_options "$sip_host" "$trunk_user"
+fi
