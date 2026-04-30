@@ -13,10 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install RPM tooling
-        run: sudo apt-get update && sudo apt-get install -y rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm gnupg
       - name: Build packages
         run: |
           VERSION="${GITHUB_REF_NAME#v}" sh scripts/package.sh
+      - name: Sign RPM packages
+        if: ${{ secrets.NVOIP_RPM_GPG_PRIVATE_KEY != '' && secrets.NVOIP_RPM_GPG_KEY_ID != '' }}
+        env:
+          NVOIP_RPM_GPG_PRIVATE_KEY: ${{ secrets.NVOIP_RPM_GPG_PRIVATE_KEY }}
+          NVOIP_RPM_GPG_KEY_ID: ${{ secrets.NVOIP_RPM_GPG_KEY_ID }}
+        run: |
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          printf '%s\n' "$NVOIP_RPM_GPG_PRIVATE_KEY" | gpg --batch --import
+          printf '%%_signature gpg\n' > ~/.rpmmacros
+          printf '%%_gpg_name %s\n' "$NVOIP_RPM_GPG_KEY_ID" >> ~/.rpmmacros
+          printf '%%__gpg /usr/bin/gpg\n' >> ~/.rpmmacros
+          rpmsign --addsign dist/*.rpm
+          rpm --checksig dist/*.rpm
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
