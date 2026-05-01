@@ -18,11 +18,14 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}" sh scripts/package.sh
       - name: Sign RPM packages
-        if: ${{ secrets.NVOIP_RPM_GPG_PRIVATE_KEY != '' && secrets.NVOIP_RPM_GPG_KEY_ID != '' }}
         env:
           NVOIP_RPM_GPG_PRIVATE_KEY: ${{ secrets.NVOIP_RPM_GPG_PRIVATE_KEY }}
           NVOIP_RPM_GPG_KEY_ID: ${{ secrets.NVOIP_RPM_GPG_KEY_ID }}
         run: |
+          if [ -z "$NVOIP_RPM_GPG_PRIVATE_KEY" ] || [ -z "$NVOIP_RPM_GPG_KEY_ID" ]; then
+            echo "RPM signing secrets are not configured; skipping RPM signing."
+            exit 0
+          fi
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
           printf '%s\n' "$NVOIP_RPM_GPG_PRIVATE_KEY" | gpg --batch --import
