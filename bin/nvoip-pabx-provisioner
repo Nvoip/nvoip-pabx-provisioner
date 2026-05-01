@@ -197,12 +197,15 @@ case "$engine" in
     sip_register_file="$work_dir/sip-register.conf"
     sip_peer_file="$work_dir/sip-peer.conf"
     ext_file="$work_dir/extensions.conf"
+    freepbx_sql_file="$work_dir/freepbx-trunk.sql"
     include_transport="0"
     dial_tech="PJSIP"
     [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ] && include_transport="1"
     [ "$asterisk_driver" = "chan_sip" ] && dial_tech="SIP"
 
-    if [ "$asterisk_driver" = "pjsip" ]; then
+    if [ "$engine" = "freepbx" ] || [ "$engine" = "issabel" ]; then
+      nvoip_render_freepbx_trunk_sql "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" "$asterisk_driver" > "$freepbx_sql_file"
+    elif [ "$asterisk_driver" = "pjsip" ]; then
       nvoip_render_asterisk_pjsip "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" "$include_transport" "$external_ip" > "$pjsip_file"
     else
       nvoip_render_asterisk_chan_sip_register "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" > "$sip_register_file"
@@ -211,7 +214,9 @@ case "$engine" in
 
     nvoip_render_asterisk_extensions "$trunk_name" "$inbound_context" "$test_context" "$outbound_prefix" "$inbound_did" "$apply_test_routing" "$dial_tech" > "$ext_file"
 
-    if [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ]; then
+    if [ "$engine" = "freepbx" ] || [ "$engine" = "issabel" ]; then
+      ext_target="/etc/asterisk/extensions_custom.conf"
+    elif [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ]; then
       pjsip_target="/etc/asterisk/pjsip.conf"
       ext_target="/etc/asterisk/extensions.conf"
     elif [ "$asterisk_driver" = "chan_sip" ]; then
@@ -223,7 +228,22 @@ case "$engine" in
       ext_target="/etc/asterisk/extensions_custom.conf"
     fi
 
-    if [ "$asterisk_driver" = "pjsip" ]; then
+    if [ "$engine" = "freepbx" ] || [ "$engine" = "issabel" ]; then
+      if [ "$dry_run" = "1" ]; then
+        nvoip_log "### FreePBX/Issabel trunk database"
+        if [ "$asterisk_driver" = "chan_sip" ]; then
+          nvoip_log "# target: MySQL/MariaDB database asterisk, tables trunks and sip"
+        else
+          nvoip_log "# target: MySQL/MariaDB database asterisk, tables trunks and pjsip"
+        fi
+        cat "$freepbx_sql_file"
+        nvoip_log ""
+      elif nvoip_has_command mysql; then
+        nvoip_mysql_asterisk "$freepbx_sql_file" || nvoip_die "falha ao gravar trunk no banco do FreePBX/Issabel"
+      else
+        nvoip_die "mysql nao encontrado; nao e possivel gravar trunk no banco do FreePBX/Issabel"
+      fi
+    elif [ "$asterisk_driver" = "pjsip" ]; then
       nvoip_show_or_apply_block "Asterisk PJSIP trunk" "$pjsip_target" "$pjsip_file" "$dry_run" "$begin" "$end" "$backup_dir"
     else
       nvoip_show_or_apply_block "Asterisk chan_sip register" "$sip_register_target" "$sip_register_file" "$dry_run" "$begin" "$end" "$backup_dir"
@@ -239,7 +259,10 @@ case "$engine" in
       fi
     fi
     ;;
-  freeswitch|fusionpbx)
+  fusionpbx)
+    nvoip_die "FusionPBX precisa de handler nativo de banco/API para aparecer no painel; use --engine freeswitch apenas em FreeSWITCH puro"
+    ;;
+  freeswitch)
     gateway_file="$work_dir/gateway.xml"
     dialplan_file="$work_dir/dialplan.xml"
     nvoip_render_freeswitch_gateway "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" > "$gateway_file"

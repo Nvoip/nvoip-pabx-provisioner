@@ -131,24 +131,27 @@ No Asterisk puro, o provisionador tambem cria um transport UDP PJSIP gerenciado 
 
 Em FreePBX:
 
-- `/etc/asterisk/pjsip_custom_post.conf`
-- `/etc/asterisk/extensions_custom.conf`
+- banco MySQL/MariaDB `asterisk`, tabelas `trunks` e `pjsip`/`sip`
+- `/etc/asterisk/extensions_custom.conf` apenas para rotas de teste opcionais
 
 Em Issabel classico com `chan_sip`:
 
-- `/etc/asterisk/sip_general_custom.conf`
-- `/etc/asterisk/sip_custom_post.conf`
-- `/etc/asterisk/extensions_custom.conf`
+- banco MySQL/MariaDB `asterisk`, tabelas `trunks` e `sip`
+- `/etc/asterisk/extensions_custom.conf` apenas para rotas de teste opcionais
 
 Em Issabel com PJSIP:
 
-- `/etc/asterisk/pjsip_custom_post.conf`
-- `/etc/asterisk/extensions_custom.conf`
+- banco MySQL/MariaDB `asterisk`, tabelas `trunks` e `pjsip`
+- `/etc/asterisk/extensions_custom.conf` apenas para rotas de teste opcionais
 
-Em FreeSWITCH e FusionPBX:
+No FreePBX/Issabel, o trunk e gravado no mecanismo nativo do PBX para aparecer na tela web. O reload do PBX gera arquivos como `sip_additional.conf`, `sip_registrations.conf` e `extensions_additional.conf`.
+
+Em FreeSWITCH puro:
 
 - `/etc/freeswitch/sip_profiles/external/nvoip-trunk.xml`
 - `/etc/freeswitch/dialplan/default/nvoip-trunk.xml`
+
+Em FusionPBX, o provisionador nao aplica XML direto porque isso nao garante exibicao no painel. O stack precisa de handler nativo de banco/API do FusionPBX.
 
 Backups ficam em `/var/backups/nvoip-pabx`, ou no diretório informado com `--backup-dir`.
 
@@ -179,7 +182,7 @@ O `--validate-sipp` faz um smoke test SIP OPTIONS contra o servidor configurado.
 
 ## Proximos incrementos
 
-- handlers especificos para bancos do FusionPBX e FreePBX quando for melhor usar API/DB em vez de arquivos custom
+- handler especifico para banco/API do FusionPBX para o gateway aparecer no painel web
 - cenarios `sipp` para INVITE autenticado de saida
 - teste de entrada com DID real e callback por CLI/AMI/Event Socket
 - empacotamento `.deb`, `.rpm` e instalador one-line

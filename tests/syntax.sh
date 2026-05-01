@@ -31,10 +31,26 @@ sh -n "$root_dir/scripts/aws/user-data-freeswitch.sh"
   --dry-run >/dev/null
 
 "$root_dir/bin/nvoip-pabx-provisioner" provision \
+  --engine freepbx \
+  --asterisk-driver pjsip \
+  --trunk-user "1000" \
+  --trunk-password "secret" \
+  --dry-run >/dev/null
+
+"$root_dir/bin/nvoip-pabx-provisioner" provision \
   --engine freeswitch \
   --trunk-user "1000" \
   --trunk-password "secret" \
   --apply-test-routing \
   --dry-run >/dev/null
+
+if "$root_dir/bin/nvoip-pabx-provisioner" provision \
+  --engine fusionpbx \
+  --trunk-user "1000" \
+  --trunk-password "secret" \
+  --dry-run >/dev/null 2>&1; then
+  printf 'fusionpbx should require native database/API handler\n' >&2
+  exit 1
+fi
 
 printf 'ok\n'

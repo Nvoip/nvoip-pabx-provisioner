@@ -1,6 +1,6 @@
 #!/bin/sh
 
-NVOIP_PABX_VERSION="0.1.5"
+NVOIP_PABX_VERSION="0.1.6"
 NVOIP_SIP_HOST_DEFAULT="sip.nvoip.com.br"
 NVOIP_TRUNK_NAME_DEFAULT="nvoip-trunk"
 NVOIP_ASTERISK_CONTEXT_DEFAULT="from-nvoip"
@@ -31,6 +31,57 @@ nvoip_has_command() {
 
 nvoip_quote_sed() {
   printf '%s' "$1" | sed 's/[\/&]/\\&/g'
+}
+
+nvoip_sql_escape() {
+  printf '%s' "$1" | sed "s/'/''/g"
+}
+
+nvoip_read_amp_conf_value() {
+  key="$1"
+
+  for conf in /etc/freepbx.conf /etc/amportal.conf /etc/asterisk/freepbx.conf; do
+    [ -f "$conf" ] || continue
+    value="$(awk -F= -v key="$key" '
+      $1 == key || index($0, "['\''" key "'\'']") || index($0, "[\"" key "\"]") {
+        value = $0
+        sub("^[^=]*=", "", value)
+        gsub(/^[ \t'\''"]+|[ \t'\''";]+$/, "", value)
+        print value
+        exit
+      }
+    ' "$conf" 2>/dev/null || true)"
+    [ -n "$value" ] && printf '%s\n' "$value" && return 0
+  done
+
+  return 1
+}
+
+nvoip_mysql_asterisk() {
+  sql_file="$1"
+  db_name="$(nvoip_read_amp_conf_value AMPDBNAME || true)"
+  db_user="$(nvoip_read_amp_conf_value AMPDBUSER || true)"
+  db_pass="$(nvoip_read_amp_conf_value AMPDBPASS || true)"
+  db_host="$(nvoip_read_amp_conf_value AMPDBHOST || true)"
+
+  [ -n "$db_name" ] || db_name="asterisk"
+
+  if [ -n "$db_user" ]; then
+    defaults_file="${sql_file}.mysql.cnf"
+    {
+      printf '[client]\n'
+      printf 'user=%s\n' "$db_user"
+      [ -n "$db_pass" ] && printf 'password=%s\n' "$db_pass"
+      [ -n "$db_host" ] && printf 'host=%s\n' "$db_host"
+    } > "$defaults_file" || return 1
+    chmod 600 "$defaults_file" 2>/dev/null || true
+    mysql --defaults-extra-file="$defaults_file" "$db_name" < "$sql_file"
+    rc="$?"
+    rm -f "$defaults_file"
+    return "$rc"
+  else
+    mysql "$db_name" < "$sql_file"
+  fi
 }
 
 nvoip_timestamp() {
