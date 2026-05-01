@@ -182,6 +182,111 @@ sendrpid=pai
 EOF
 }
 
+nvoip_render_freepbx_trunk_sql() {
+  trunk_name="$1"
+  trunk_user="$2"
+  trunk_password="$3"
+  sip_host="$4"
+  from_domain="$5"
+  inbound_context="$6"
+  asterisk_driver="$7"
+
+  trunk_name_sql="$(nvoip_sql_escape "$trunk_name")"
+  trunk_user_sql="$(nvoip_sql_escape "$trunk_user")"
+  trunk_password_sql="$(nvoip_sql_escape "$trunk_password")"
+  sip_host_sql="$(nvoip_sql_escape "$sip_host")"
+  from_domain_sql="$(nvoip_sql_escape "$from_domain")"
+  inbound_context_sql="$(nvoip_sql_escape "$inbound_context")"
+
+  if [ "$asterisk_driver" = "chan_sip" ]; then
+    tech="sip"
+  else
+    tech="pjsip"
+  fi
+
+  cat <<EOF
+START TRANSACTION;
+SET @nvoip_trunk_name := '${trunk_name_sql}';
+SET @nvoip_trunk_id := (
+  SELECT trunkid FROM trunks WHERE name = @nvoip_trunk_name ORDER BY trunkid LIMIT 1
+);
+SET @nvoip_trunk_id := COALESCE(
+  @nvoip_trunk_id,
+  (SELECT COALESCE(MAX(trunkid), 0) + 1 FROM trunks)
+);
+DELETE FROM trunks WHERE trunkid = @nvoip_trunk_id OR name = @nvoip_trunk_name;
+INSERT INTO trunks
+  (\`trunkid\`, \`tech\`, \`channelid\`, \`name\`, \`outcid\`, \`keepcid\`, \`maxchans\`, \`failscript\`, \`dialoutprefix\`, \`usercontext\`, \`provider\`, \`disabled\`, \`continue\`)
+VALUES
+  (@nvoip_trunk_id, '${tech}', '${trunk_name_sql}', '${trunk_name_sql}', '', 'off', '', '', '', '${trunk_name_sql}', 'Nvoip', 'off', 'off');
+EOF
+
+  if [ "$asterisk_driver" = "chan_sip" ]; then
+    cat <<EOF
+DELETE FROM sip WHERE id IN (@nvoip_trunk_id, CONCAT('tr-peer-', @nvoip_trunk_id), CONCAT('tr-reg-', @nvoip_trunk_id));
+INSERT INTO sip (id, keyword, data, flags) VALUES
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'account', '${trunk_name_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'secret', '${trunk_password_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'defaultuser', '${trunk_user_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'username', '${trunk_user_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'fromuser', '${trunk_user_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'fromdomain', '${from_domain_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'host', '${sip_host_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'type', 'peer', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'context', '${inbound_context_sql}', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'insecure', 'port,invite', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'qualify', 'yes', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'disallow', 'all', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'allow', 'ulaw&alaw', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'dtmfmode', 'rfc2833', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'nat', 'force_rport,comedia', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'canreinvite', 'no', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'directmedia', 'no', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'trustrpid', 'yes', 0),
+  (CONCAT('tr-peer-', @nvoip_trunk_id), 'sendrpid', 'pai', 0),
+  (CONCAT('tr-reg-', @nvoip_trunk_id), 'register', '${trunk_user_sql}:${trunk_password_sql}@${sip_host_sql}/${trunk_user_sql}', 0);
+EOF
+  else
+    cat <<EOF
+DELETE FROM pjsip WHERE id = @nvoip_trunk_id;
+INSERT INTO pjsip (id, keyword, data, flags) VALUES
+  (@nvoip_trunk_id, 'trunk_name', '${trunk_name_sql}', 0),
+  (@nvoip_trunk_id, 'username', '${trunk_user_sql}', 0),
+  (@nvoip_trunk_id, 'auth_username', '${trunk_user_sql}', 0),
+  (@nvoip_trunk_id, 'secret', '${trunk_password_sql}', 0),
+  (@nvoip_trunk_id, 'authentication', 'outbound', 0),
+  (@nvoip_trunk_id, 'sip_server', '${sip_host_sql}', 0),
+  (@nvoip_trunk_id, 'sip_server_port', '5060', 0),
+  (@nvoip_trunk_id, 'client_uri', 'sip:${trunk_user_sql}@${from_domain_sql}', 0),
+  (@nvoip_trunk_id, 'server_uri', 'sip:${sip_host_sql}', 0),
+  (@nvoip_trunk_id, 'registration', 'send', 0),
+  (@nvoip_trunk_id, 'max_retries', '10000', 0),
+  (@nvoip_trunk_id, 'expiration', '3600', 0),
+  (@nvoip_trunk_id, 'retry_interval', '60', 0),
+  (@nvoip_trunk_id, 'fatal_retry_interval', '0', 0),
+  (@nvoip_trunk_id, 'forbidden_retry_interval', '300', 0),
+  (@nvoip_trunk_id, 'context', '${inbound_context_sql}', 0),
+  (@nvoip_trunk_id, 'from_user', '${trunk_user_sql}', 0),
+  (@nvoip_trunk_id, 'from_domain', '${from_domain_sql}', 0),
+  (@nvoip_trunk_id, 'match', '${sip_host_sql}', 0),
+  (@nvoip_trunk_id, 'qualify_frequency', '60', 0),
+  (@nvoip_trunk_id, 'dtmfmode', 'rfc4733', 0),
+  (@nvoip_trunk_id, 'codecs', 'ulaw,alaw', 0),
+  (@nvoip_trunk_id, 'disallow', 'all', 0),
+  (@nvoip_trunk_id, 'allow', 'ulaw,alaw', 0),
+  (@nvoip_trunk_id, 'direct_media', 'no', 0),
+  (@nvoip_trunk_id, 'rtp_symmetric', 'yes', 0),
+  (@nvoip_trunk_id, 'force_rport', 'yes', 0),
+  (@nvoip_trunk_id, 'rewrite_contact', 'yes', 0),
+  (@nvoip_trunk_id, 'timers', 'yes', 0);
+EOF
+  fi
+
+  cat <<EOF
+COMMIT;
+EOF
+}
+
 nvoip_render_freeswitch_gateway() {
   trunk_name="$1"
   trunk_user="$2"
