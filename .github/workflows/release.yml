@@ -34,8 +34,8 @@ jobs:
           printf '%%__gpg /usr/bin/gpg\n' >> ~/.rpmmacros
           rpmsign --addsign dist/*.rpm
           gpg --armor --export "$NVOIP_RPM_GPG_KEY_ID" > /tmp/nvoip-rpm-public.asc
-          sudo rpm --import /tmp/nvoip-rpm-public.asc
-          rpm --checksig dist/*.rpm
+          rpm --import /tmp/nvoip-rpm-public.asc
+          rpm --checksig -v dist/*.rpm
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
