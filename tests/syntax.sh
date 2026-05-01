@@ -24,6 +24,13 @@ sh -n "$root_dir/scripts/aws/user-data-freeswitch.sh"
   --dry-run >/dev/null
 
 "$root_dir/bin/nvoip-pabx-provisioner" provision \
+  --engine issabel \
+  --asterisk-driver chan_sip \
+  --trunk-user "1000" \
+  --trunk-password "secret" \
+  --dry-run >/dev/null
+
+"$root_dir/bin/nvoip-pabx-provisioner" provision \
   --engine freeswitch \
   --trunk-user "1000" \
   --trunk-password "secret" \

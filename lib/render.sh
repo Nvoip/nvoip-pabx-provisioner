@@ -101,6 +101,7 @@ nvoip_render_asterisk_extensions() {
   outbound_prefix="$4"
   inbound_did="$5"
   apply_test_routing="$6"
+  dial_tech="${7:-PJSIP}"
 
   if [ "$apply_test_routing" != "1" ]; then
     cat <<EOF
@@ -134,8 +135,50 @@ EOF
 
 [${test_context}]
 exten => _${outbound_prefix}X.,1,NoOp(Nvoip outbound test through ${trunk_name})
- same => n,Dial(PJSIP/\${EXTEN:${#outbound_prefix}}@${trunk_name},60)
+ same => n,Dial(${dial_tech}/\${EXTEN:${#outbound_prefix}}@${trunk_name},60)
  same => n,Hangup()
+EOF
+}
+
+nvoip_render_asterisk_chan_sip_register() {
+  trunk_name="$1"
+  trunk_user="$2"
+  trunk_password="$3"
+  sip_host="$4"
+
+  cat <<EOF
+register => ${trunk_user}:${trunk_password}@${sip_host}/${trunk_user}
+EOF
+}
+
+nvoip_render_asterisk_chan_sip_peer() {
+  trunk_name="$1"
+  trunk_user="$2"
+  trunk_password="$3"
+  sip_host="$4"
+  from_domain="$5"
+  inbound_context="$6"
+
+  cat <<EOF
+[${trunk_name}]
+type=peer
+host=${sip_host}
+defaultuser=${trunk_user}
+username=${trunk_user}
+secret=${trunk_password}
+fromuser=${trunk_user}
+fromdomain=${from_domain}
+context=${inbound_context}
+insecure=port,invite
+qualify=yes
+disallow=all
+allow=ulaw,alaw
+dtmfmode=rfc2833
+nat=force_rport,comedia
+canreinvite=no
+directmedia=no
+trustrpid=yes
+sendrpid=pai
 EOF
 }
 

@@ -6,6 +6,7 @@ Status inicial baseado em laboratório AWS e diferenças conhecidas de empacotam
 | --- | --- | --- | --- |
 | Asterisk 18 | Ubuntu 22.04 | Validado | Pacote `asterisk` disponivel via apt. Precisa criar transport PJSIP em Asterisk puro e reiniciar para carregar transport novo. |
 | FreePBX | Debian/CentOS/RHEL derivados | Pendente | Deve usar arquivos custom (`pjsip_custom_post.conf`, `extensions_custom.conf`) para nao sobrescrever configuracao gerada pelo FreePBX. |
+| Issabel classico | CentOS/RHEL derivados | Ajustado | Usa `sip_general_custom.conf` para registro e `sip_custom_post.conf` para peer `chan_sip` quando PJSIP nao esta disponivel. |
 | Issabel | CentOS/RHEL derivados | Pendente | Deve seguir padrao FreePBX/Elastix e evitar alterar arquivos gerados diretamente. |
 | FreeSWITCH | Ubuntu 22.04 | Bloqueado via apt padrao | Repositorios padrao Jammy nao incluem `freeswitch`, `freeswitch-mod-sofia` e `freeswitch-music-default`. Precisa repo oficial FreeSWITCH, build source ou distro/installer alternativo. |
 | FusionPBX | Debian recomendado pelo projeto | Pendente | Caminho recomendado e validar usando instalador oficial FusionPBX em Debian, nao Ubuntu puro. |

@@ -1,5 +1,5 @@
 Name:           nvoip-pabx-provisioner
-Version:        0.1.0
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        Provisionador de trunk SIP Nvoip para PABX Linux
 License:        GPL-3.0-only
@@ -28,5 +28,8 @@ ln -s /usr/lib/nvoip-pabx-provisioner/bin/nvoip-pabx-provisioner %{buildroot}/us
 /usr/lib/nvoip-pabx-provisioner
 
 %changelog
+* Fri May 01 2026 Nvoip <suporte@nvoip.com.br> - 0.1.5-1
+- Ajusta deteccao e provisionamento para Issabel classico com chan_sip
+
 * Thu Apr 30 2026 Nvoip <suporte@nvoip.com.br> - 0.1.0-1
 - Release inicial

@@ -6,11 +6,12 @@ nvoip_detect_engine() {
     return 0
   fi
 
+  if [ -f /etc/issabel.conf ] || [ -d /var/www/html/modules/pbxadmin ]; then
+    printf 'issabel\n'
+    return 0
+  fi
+
   if [ -d /etc/freepbx ] || [ -f /etc/amportal.conf ] || [ -d /var/www/html/admin/modules ]; then
-    if [ -f /etc/issabel.conf ] || [ -d /var/www/html/modules/pbxadmin ]; then
-      printf 'issabel\n'
-      return 0
-    fi
     printf 'freepbx\n'
     return 0
   fi
@@ -28,12 +29,42 @@ nvoip_detect_engine() {
   printf 'unknown\n'
 }
 
+nvoip_asterisk_has_pjsip() {
+  if command -v asterisk >/dev/null 2>&1; then
+    asterisk -rx 'module show like res_pjsip.so' 2>/dev/null | grep -qi 'res_pjsip.*Running' && return 0
+    asterisk -rx 'pjsip show settings' >/dev/null 2>&1 && return 0
+  fi
+
+  [ -f /etc/asterisk/pjsip.conf ] || [ -f /etc/asterisk/pjsip_custom_post.conf ]
+}
+
+nvoip_detect_asterisk_driver() {
+  engine="${1:-auto}"
+
+  case "$engine" in
+    issabel)
+      if command -v asterisk >/dev/null 2>&1 && nvoip_asterisk_has_pjsip; then
+        printf 'pjsip\n'
+      else
+        printf 'chan_sip\n'
+      fi
+      ;;
+    asterisk|freepbx)
+      printf 'pjsip\n'
+      ;;
+    *)
+      printf 'pjsip\n'
+      ;;
+  esac
+}
+
 nvoip_print_detection() {
   engine="$(nvoip_detect_engine)"
   nvoip_log "engine=$engine"
 
   if command -v asterisk >/dev/null 2>&1; then
     asterisk -rx 'core show version' 2>/dev/null | sed 's/^/asterisk=/'
+    nvoip_log "asterisk_driver=$(nvoip_detect_asterisk_driver "$engine")"
   fi
 
   if command -v fs_cli >/dev/null 2>&1; then

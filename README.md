@@ -7,7 +7,8 @@ O objetivo é reduzir a integração ao mínimo: informar usuário e senha do tr
 ## Estado atual
 
 - Asterisk puro via `pjsip.conf` e `extensions.conf`
-- FreePBX e Issabel via `pjsip_custom_post.conf` e `extensions_custom.conf`
+- FreePBX via `pjsip_custom_post.conf` e `extensions_custom.conf`
+- Issabel via `sip_custom_post.conf` em instalacoes classicas `chan_sip`, ou `pjsip_custom_post.conf` quando PJSIP estiver disponivel
 - FreeSWITCH via gateway XML e dialplan XML
 - FusionPBX com arquivos FreeSWITCH compatíveis
 - modo `--dry-run` por padrão
@@ -66,6 +67,17 @@ sudo bin/nvoip-pabx-provisioner provision \
   --apply
 ```
 
+Forcar Issabel classico com `chan_sip`:
+
+```bash
+sudo bin/nvoip-pabx-provisioner provision \
+  --engine issabel \
+  --asterisk-driver chan_sip \
+  --trunk-user "SEU_USUARIO_NVOIP" \
+  --trunk-password "SUA_SENHA_NVOIP" \
+  --apply
+```
+
 Aplicar trunk mais rotas minimas de teste:
 
 ```bash
@@ -117,7 +129,18 @@ Em Asterisk puro:
 
 No Asterisk puro, o provisionador tambem cria um transport UDP PJSIP gerenciado e reinicia o Asterisk ao aplicar, porque transports PJSIP novos normalmente nao entram apenas com `core reload`.
 
-Em FreePBX e Issabel:
+Em FreePBX:
+
+- `/etc/asterisk/pjsip_custom_post.conf`
+- `/etc/asterisk/extensions_custom.conf`
+
+Em Issabel classico com `chan_sip`:
+
+- `/etc/asterisk/sip_general_custom.conf`
+- `/etc/asterisk/sip_custom_post.conf`
+- `/etc/asterisk/extensions_custom.conf`
+
+Em Issabel com PJSIP:
 
 - `/etc/asterisk/pjsip_custom_post.conf`
 - `/etc/asterisk/extensions_custom.conf`

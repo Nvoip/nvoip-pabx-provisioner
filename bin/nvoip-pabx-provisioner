@@ -24,6 +24,7 @@ Opcoes de provisionamento:
   --trunk-name NAME                 padrao: ${NVOIP_TRUNK_NAME_DEFAULT}
   --sip-host HOST                   padrao: ${NVOIP_SIP_HOST_DEFAULT}
   --from-domain DOMAIN              padrao: valor de --sip-host
+  --asterisk-driver auto|pjsip|chan_sip
   --external-ip IP                  IP publico para PABX atras de NAT
   --no-auto-external-ip             nao tenta descobrir IP publico automaticamente
   --apply-test-routing              cria rotas minimas de entrada/saida para teste
@@ -50,6 +51,7 @@ trunk_password="${NVOIP_TRUNK_PASSWORD:-}"
 trunk_name="${NVOIP_TRUNK_NAME:-$NVOIP_TRUNK_NAME_DEFAULT}"
 sip_host="${NVOIP_SIP_HOST:-$NVOIP_SIP_HOST_DEFAULT}"
 from_domain=""
+asterisk_driver="auto"
 external_ip="${NVOIP_EXTERNAL_IP:-}"
 auto_external_ip="1"
 inbound_context="$NVOIP_ASTERISK_CONTEXT_DEFAULT"
@@ -70,6 +72,7 @@ while [ "$#" -gt 0 ]; do
     --trunk-name) trunk_name="${2:-}"; shift 2 ;;
     --sip-host) sip_host="${2:-}"; shift 2 ;;
     --from-domain) from_domain="${2:-}"; shift 2 ;;
+    --asterisk-driver) asterisk_driver="${2:-}"; shift 2 ;;
     --external-ip) external_ip="${2:-}"; shift 2 ;;
     --no-auto-external-ip) auto_external_ip="0"; shift ;;
     --inbound-did) inbound_did="${2:-}"; shift 2 ;;
@@ -120,7 +123,11 @@ if [ "$command_name" = "configure" ]; then
   trunk_name="$(nvoip_prompt "Nome interno do trunk" "$trunk_name")"
   sip_host="$(nvoip_prompt "Servidor SIP Nvoip" "$sip_host")"
 
-  if [ "$engine" = "asterisk" ] && [ -z "$external_ip" ]; then
+  if [ "$asterisk_driver" = "auto" ]; then
+    asterisk_driver="$(nvoip_detect_asterisk_driver "$engine")"
+  fi
+
+  if [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ] && [ -z "$external_ip" ]; then
     external_ip="$(nvoip_prompt "IP publico do PABX se estiver atras de NAT (vazio para pular)" "")"
   fi
 
@@ -153,14 +160,23 @@ fi
 [ -n "$trunk_user" ] || nvoip_die "informe --trunk-user ou NVOIP_TRUNK_USER"
 [ -n "$trunk_password" ] || nvoip_die "informe --trunk-password ou NVOIP_TRUNK_PASSWORD"
 
-if [ "$engine" = "asterisk" ] && [ -z "$external_ip" ] && [ "$auto_external_ip" = "1" ]; then
+if [ "$asterisk_driver" = "auto" ]; then
+  asterisk_driver="$(nvoip_detect_asterisk_driver "$engine")"
+fi
+
+case "$asterisk_driver" in
+  pjsip|chan_sip) ;;
+  *) nvoip_die "asterisk-driver nao suportado: $asterisk_driver" ;;
+esac
+
+if [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ] && [ -z "$external_ip" ] && [ "$auto_external_ip" = "1" ]; then
   external_ip="$(nvoip_detect_public_ip || true)"
   [ -n "$external_ip" ] && nvoip_log "IP publico detectado automaticamente: $external_ip"
 fi
 
 if [ "$command_name" = "validate" ]; then
   case "$engine" in
-    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" ;;
+    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" "$asterisk_driver" ;;
     freeswitch|fusionpbx) nvoip_validate_freeswitch_registration "$trunk_name" ;;
     *) nvoip_die "engine nao suportado para validacao: $engine" ;;
   esac
@@ -178,28 +194,48 @@ end="; END NVOIP MANAGED BLOCK ${trunk_name}"
 case "$engine" in
   asterisk|freepbx|issabel)
     pjsip_file="$work_dir/pjsip.conf"
+    sip_register_file="$work_dir/sip-register.conf"
+    sip_peer_file="$work_dir/sip-peer.conf"
     ext_file="$work_dir/extensions.conf"
     include_transport="0"
-    [ "$engine" = "asterisk" ] && include_transport="1"
-    nvoip_render_asterisk_pjsip "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" "$include_transport" "$external_ip" > "$pjsip_file"
-    nvoip_render_asterisk_extensions "$trunk_name" "$inbound_context" "$test_context" "$outbound_prefix" "$inbound_did" "$apply_test_routing" > "$ext_file"
+    dial_tech="PJSIP"
+    [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ] && include_transport="1"
+    [ "$asterisk_driver" = "chan_sip" ] && dial_tech="SIP"
 
-    if [ "$engine" = "asterisk" ]; then
+    if [ "$asterisk_driver" = "pjsip" ]; then
+      nvoip_render_asterisk_pjsip "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" "$include_transport" "$external_ip" > "$pjsip_file"
+    else
+      nvoip_render_asterisk_chan_sip_register "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" > "$sip_register_file"
+      nvoip_render_asterisk_chan_sip_peer "$trunk_name" "$trunk_user" "$trunk_password" "$sip_host" "$from_domain" "$inbound_context" > "$sip_peer_file"
+    fi
+
+    nvoip_render_asterisk_extensions "$trunk_name" "$inbound_context" "$test_context" "$outbound_prefix" "$inbound_did" "$apply_test_routing" "$dial_tech" > "$ext_file"
+
+    if [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ]; then
       pjsip_target="/etc/asterisk/pjsip.conf"
       ext_target="/etc/asterisk/extensions.conf"
+    elif [ "$asterisk_driver" = "chan_sip" ]; then
+      sip_register_target="/etc/asterisk/sip_general_custom.conf"
+      sip_peer_target="/etc/asterisk/sip_custom_post.conf"
+      ext_target="/etc/asterisk/extensions_custom.conf"
     else
       pjsip_target="/etc/asterisk/pjsip_custom_post.conf"
       ext_target="/etc/asterisk/extensions_custom.conf"
     fi
 
-    nvoip_show_or_apply_block "Asterisk PJSIP trunk" "$pjsip_target" "$pjsip_file" "$dry_run" "$begin" "$end" "$backup_dir"
+    if [ "$asterisk_driver" = "pjsip" ]; then
+      nvoip_show_or_apply_block "Asterisk PJSIP trunk" "$pjsip_target" "$pjsip_file" "$dry_run" "$begin" "$end" "$backup_dir"
+    else
+      nvoip_show_or_apply_block "Asterisk chan_sip register" "$sip_register_target" "$sip_register_file" "$dry_run" "$begin" "$end" "$backup_dir"
+      nvoip_show_or_apply_block "Asterisk chan_sip trunk" "$sip_peer_target" "$sip_peer_file" "$dry_run" "$begin" "$end" "$backup_dir"
+    fi
     nvoip_show_or_apply_block "Asterisk dialplan" "$ext_target" "$ext_file" "$dry_run" "$begin" "$end" "$backup_dir"
 
     if [ "$dry_run" = "0" ]; then
-      if [ "$engine" = "asterisk" ] && [ "$include_transport" = "1" ]; then
+      if [ "$engine" = "asterisk" ] && [ "$asterisk_driver" = "pjsip" ] && [ "$include_transport" = "1" ]; then
         nvoip_restart_asterisk || nvoip_warn "nao foi possivel reiniciar o Asterisk automaticamente"
       else
-        nvoip_reload_asterisk || nvoip_warn "nao foi possivel recarregar o Asterisk automaticamente"
+        nvoip_reload_asterisk_stack "$engine" || nvoip_warn "nao foi possivel recarregar o Asterisk automaticamente"
       fi
     fi
     ;;
@@ -237,7 +273,7 @@ esac
 
 if [ "$do_validate" = "1" ]; then
   case "$engine" in
-    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" ;;
+    asterisk|freepbx|issabel) nvoip_validate_asterisk_registration "$trunk_name" "$asterisk_driver" ;;
     freeswitch|fusionpbx) nvoip_validate_freeswitch_registration "$trunk_name" ;;
   esac
 fi

@@ -2,8 +2,15 @@
 
 nvoip_validate_asterisk_registration() {
   trunk_name="$1"
+  driver="${2:-pjsip}"
   if ! command -v asterisk >/dev/null 2>&1; then
     nvoip_warn "asterisk nao encontrado; pulando validacao de registro"
+    return 0
+  fi
+
+  if [ "$driver" = "chan_sip" ]; then
+    asterisk -rx "sip show registry" | sed -n "/$trunk_name/p;/nvoip/p;/Registered/p"
+    asterisk -rx "sip show peer $trunk_name" >/dev/null 2>&1 || return 1
     return 0
   fi
 

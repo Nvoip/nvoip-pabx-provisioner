@@ -1,6 +1,6 @@
 #!/bin/sh
 
-NVOIP_PABX_VERSION="0.1.0"
+NVOIP_PABX_VERSION="0.1.5"
 NVOIP_SIP_HOST_DEFAULT="sip.nvoip.com.br"
 NVOIP_TRUNK_NAME_DEFAULT="nvoip-trunk"
 NVOIP_ASTERISK_CONTEXT_DEFAULT="from-nvoip"
@@ -101,6 +101,29 @@ nvoip_reload_asterisk() {
   if nvoip_has_command asterisk; then
     asterisk -rx 'core reload' >/dev/null 2>&1 || return 1
   fi
+}
+
+nvoip_reload_asterisk_stack() {
+  engine="${1:-asterisk}"
+
+  if [ "$engine" = "freepbx" ] && nvoip_has_command fwconsole; then
+    fwconsole reload >/dev/null 2>&1 || return 1
+    return 0
+  fi
+
+  if [ "$engine" = "issabel" ]; then
+    if nvoip_has_command fwconsole; then
+      fwconsole reload >/dev/null 2>&1 || return 1
+      return 0
+    fi
+
+    if nvoip_has_command amportal; then
+      amportal reload >/dev/null 2>&1 || return 1
+      return 0
+    fi
+  fi
+
+  nvoip_reload_asterisk
 }
 
 nvoip_restart_asterisk() {
