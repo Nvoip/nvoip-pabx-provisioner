@@ -1,13 +1,22 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Validation-only package version
+        required: true
+        type: string
+        default: 0.0.0-ci
 
 jobs:
   package:
-    runs-on: ubuntu-22.04
+    runs-on:
+      - codebuild-nvoip-ci-public-release-${{ github.run_id }}-${{ github.run_attempt }}
+      - organization-registration-name:Nvoip
+      - registration-group-id:4
     permissions:
       contents: write
     steps:
@@ -15,8 +24,12 @@ jobs:
       - name: Install RPM tooling
         run: sudo apt-get update && sudo apt-get install -y rpm gnupg
       - name: Build packages
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          VALIDATION_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" sh scripts/package.sh
+          VERSION="${RELEASE_TAG:-$VALIDATION_VERSION}"
+          VERSION="${VERSION#v}" sh scripts/package.sh
       - name: Sign RPM packages
         env:
           NVOIP_RPM_GPG_PRIVATE_KEY: ${{ secrets.NVOIP_RPM_GPG_PRIVATE_KEY }}
@@ -37,6 +50,7 @@ jobs:
           rpm --import /tmp/nvoip-rpm-public.asc
           rpm --checksig -v dist/*.rpm
       - name: Publish GitHub release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
