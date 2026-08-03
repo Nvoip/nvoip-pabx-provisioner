@@ -13,10 +13,7 @@ on:
 
 jobs:
   package:
-    runs-on:
-      - codebuild-nvoip-ci-public-release-${{ github.run_id }}-${{ github.run_attempt }}
-      - organization-registration-name:Nvoip
-      - registration-group-id:4
+    runs-on: [self-hosted, Linux, X64, nvoip-ci-public-release]
     permissions:
       contents: write
     steps:
