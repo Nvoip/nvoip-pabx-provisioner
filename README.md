@@ -212,3 +212,32 @@ scripts/aws/run-asterisk-test.sh \
 ```
 
 O security group libera SSH apenas para o CIDR informado e libera SIP/RTP UDP para o CIDR informado em `--sip-cidr` ou `0.0.0.0/0` no laboratorio. Encerre a instancia ao terminar os testes.
+
+## Acompanhar no marketplace (NN-4514)
+
+Com o backend e o Painel atualizados, abra o PABX em Integrações → Configuração
+e baixe uma credencial de acompanhamento. Ela é válida por 30 minutos e vinculada
+à conta e ao PABX selecionado. Uma nova credencial substitui a anterior.
+
+Transfira o arquivo com segurança ao servidor do PABX e acrescente
+`--marketplace-token-file /caminho/privado/nvoip-asterisk-provisioning.txt`
+ao comando `provision --apply` habitual. Use um arquivo acessível somente ao
+operador; não coloque o token em argumentos, tickets, logs ou repositórios.
+
+O acompanhamento é opcional, limitado a Asterisk, FreePBX e Issabel. `--dry-run`
+não envia relatórios. O CLI recusa o início se a credencial não puder ser aceita
+antes de aplicar configurações. Depois da aplicação, aguarda até 28 segundos
+pela confirmação do registro SIP do trunk; falha de recarga ou registro ausente
+não é informada como sucesso. O acompanhamento não faz ligações nem envia SIP OPTIONS.
+
+Se o registro foi confirmado mas o envio final falhou, repita `validate` com
+as mesmas opções de engine, trunk e arquivo, dentro da validade da credencial.
+Esse caminho não reaplica configurações nem reinicia serviços. Ele serve para
+repetir o relatório de uma execução iniciada; não transforma uma credencial
+recém-gerada em prova de instalação. Apague o arquivo após o uso.
+
+A informação no marketplace é o último resultado declarado pelo provisionador,
+não um monitoramento contínuo nem uma verificação independente da Nvoip.
+Instalações antigas/manuais aparecem sem informação até uma execução acompanhada.
+Migration/SQL neste repositório: none. Publicação depende da migration e da API
+NN-4514 no `painel-back-v5`; nenhuma release é publicada por este PR.
