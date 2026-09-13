@@ -30,6 +30,6 @@
     "voip"
   ],
   "scripts": {
-    "test": "sh tests/syntax.sh"
+    "test": "sh tests/syntax.sh && sh tests/marketplace.sh"
   }
 }

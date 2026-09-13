@@ -1,0 +1,28 @@
+name: Provisioner tests
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+  traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require Jira key in every introduced commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          while read -r commit; do
+            message=$(git show -s --format=%B "$commit")
+            if ! [[ "$message" =~ NN-[0-9]+ ]]; then
+              echo "Missing Jira key in commit $commit"
+              exit 1
+            fi
+          done < <(git rev-list "$BASE_SHA..$HEAD_SHA")
