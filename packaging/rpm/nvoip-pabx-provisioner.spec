@@ -1,5 +1,5 @@
 Name:           nvoip-pabx-provisioner
-Version:        0.1.6
+Version:        0.1.7
 Release:        1%{?dist}
 Summary:        Provisionador de trunk SIP Nvoip para PABX Linux
 License:        GPL-3.0-only
